@@ -119,6 +119,7 @@ os_debug_dump_mem_done:
 	pop rsi
 	ret
 
+os_debug_newline:
 os_debug_dump_mem_newline:
 	push rsi			; Output newline
 	push rcx

@@ -20,41 +20,48 @@ init_vmware:
 	call os_pci_read		; This returns I/O BASE+1
 	mov edx, eax			; Save for port access
 
-	; Disable video
-;	mov eax, SVGA_REG_ENABLE
-;	dec dx				; Port value is initially pointed to VALUE
-;	out dx, eax			; SVGA_INDEX
-;	mov eax, 0
-;	inc dx				; SVGA_VALUE
+;	; Debug - dump all the registers
+;	mov ecx, 17
+;	xor eax, eax
+;nextrec:
+;	dec dx
 ;	out dx, eax
+;	inc dx
+;	push rax
+;	in eax, dx
+;	call os_debug_dump_eax
+;	call os_debug_newline
+;	pop rax
+;	inc eax
+;	dec ecx
+;	jnz nextrec
+
+	; Disable video
+	mov eax, SVGA_REG_ENABLE
+	dec dx				; Port value is initially pointed to VALUE
+	out dx, eax			; SVGA_INDEX
+	mov eax, 0
+	inc dx				; SVGA_VALUE
+	out dx, eax
 
 	; Set spec ID
 	mov eax, SVGA_REG_ID
 	dec dx
 	out dx, eax
-	mov eax, 0x90000002
+	mov eax, 0;0x90000002
 	inc dx
 	out dx, eax
 
 	; Read spec ID
-	mov eax, SVGA_REG_ID
-	dec dx
-	out dx, eax
-	inc dx
-	in eax, dx
-	cmp eax, 0x90000002
-	jne init_vmware_fail
+;	mov eax, SVGA_REG_ID
+;	dec dx
+;	out dx, eax
+;	inc dx
+;	in eax, dx			; QEMU returns 0x90000002
+;	cmp eax, 0x90000002
+;	jne init_vmware_fail
 ;	call os_debug_dump_eax
 ;	jmp $
-
-
-	; Get FrameBuffer address
-	mov eax, SVGA_REG_FB_START
-	dec dx
-	out dx, eax
-	inc dx
-	in eax, dx
-	mov rbx, rax
 
 	; Set X	
 	mov eax, SVGA_REG_WIDTH
@@ -80,14 +87,6 @@ init_vmware:
 	inc dx
 	out dx, eax
 
-	; Get FrameBuffer offset
-	mov eax, SVGA_REG_FB_OFFSET
-	dec dx
-	out dx, eax
-	inc dx
-	in eax, dx
-	call os_debug_dump_eax
-
 	; Enable video
 	mov eax, SVGA_REG_ENABLE
 	dec dx
@@ -95,6 +94,14 @@ init_vmware:
 	mov eax, 1
 	inc dx
 	out dx, eax
+
+	; Get FrameBuffer address
+	mov eax, SVGA_REG_FB_START
+	dec dx
+	out dx, eax
+	inc dx
+	in eax, dx
+	mov rbx, rax
 
 	; Set kernel values
 	mov qword [os_screen_lfb], rbx
@@ -114,26 +121,20 @@ SVGA_REG_WIDTH				equ 0x02	; current screen width
 SVGA_REG_HEIGHT				equ 0x03	; current screen height
 SVGA_REG_MAX_WIDTH			equ 0x04	; maximum supported screen width
 SVGA_REG_MAX_HEIGHT			equ 0x05	; maximum supported screen height
+SVGA_REG_DEPTH				equ 0x06
 SVGA_REG_BPP				equ 0x07	; current screen bits per pixel
-SVGA_REG_FB_START			equ 0x13	; address in system memory of the frame buffer
-SVGA_REG_FB_OFFSET			equ 0x14	; offset in the frame buffer to the visible pixel data
-SVGA_REG_VRAM_SIZE			equ 0x15	; size of the video RAM
-SVGA_REG_FB_SIZE			equ 0x16	; size of the frame buffer
-SVGA_REG_CAPABILITIES			equ 0x17	; device capabilities
-SVGA_REG_FIFO_START			equ 0x18	; address in system memory of the FIFO
-SVGA_REG_FIFO_SIZE			equ 0x19	; FIFO size
-SVGA_REG_CONFIG_DONE			equ 0x20	; flag to enable FIFO operation
-SVGA_REG_SYNC				equ 0x21	; flag set by the driver to flush FIFO changes
-SVGA_REG_BUSY				equ 0x22	; flag set by the FIFO when it's processed
-
-
-; BGA Values
-VBE_DISPI_DISABLED			equ 0x00
-VBE_DISPI_ENABLED			equ 0x01
-VBE_DISPI_GETCAPS			equ 0x02	; For returning max when reading XRES, YRES, and BPP
-VBE_DISPI_8BIT_DAC			equ 0x20
-VBE_DISPI_LFB_ENABLED			equ 0x40
-VBE_DISPI_NOCLEARMEM			equ 0x80
+SVGA_REG_PSEUDOCOLOR			equ 0x08
+SVGA_REG_RED_MASK			equ 0x09
+SVGA_REG_GREEN_MASK			equ 0x0A
+SVGA_REG_BLUE_MASK			equ 0x0B
+SVGA_REG_BYTES_PER_LINE			equ 0x0C
+SVGA_REG_FB_START			equ 0x0D	; address in system memory of the frame buffer
+SVGA_REG_FB_OFFSET			equ 0x0E	; offset in the frame buffer to the visible pixel data
+SVGA_REG_VRAM_SIZE			equ 0x0F	; size of the video RAM
+SVGA_REG_FB_SIZE			equ 0x10	; size of the frame buffer
+SVGA_REG_CAPABILITIES			equ 0x11	; device capabilities
+SVGA_REG_FIFO_START			equ 0x12	; address in system memory of the FIFO
+SVGA_REG_FIFO_SIZE			equ 0x13	; FIFO size
 
 
 ; =============================================================================
