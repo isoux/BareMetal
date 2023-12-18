@@ -32,10 +32,17 @@ init_video_check_id:
 	je init_video_found_bga
 	cmp eax, 0xBEEF80EE		; VirtualBox
 	je init_video_found_bga
+	cmp eax, 0x040515AD		; VMware SVGA II Adapter
+	je init_video_found_vmware
 	jmp init_video_done
 
 init_video_found_bga:
 	call init_bga
+	ret
+
+init_video_found_vmware:
+	call init_vmware
+	ret
 
 init_video_done:
 	ret

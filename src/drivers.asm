@@ -22,6 +22,8 @@
 
 ; Video
 %include "drivers/video/bga.asm"
+%include "drivers/video/vmware.asm"
+
 
 NIC_DeviceVendor_ID:	; The supported list of NICs
 

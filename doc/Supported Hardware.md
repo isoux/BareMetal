@@ -58,3 +58,11 @@
 ### BGA
 
 * [VBE BIOS for Bochs](http://cvs.savannah.nongnu.org/viewvc/*checkout*/vgabios/vgabios/vbe_display_api.txt)
+
+
+### VMWare
+
+* [OSDev.org VMWare SVGA-II article](https://osdev.org/VMWare_SVGA-II)
+
+
+// EOF
