@@ -63,6 +63,8 @@ virtio_net_init_cap:
 	je virtio_net_init_cap_common
 	cmp al, VIRTIO_PCI_CAP_NOTIFY_CFG
 	je virtio_net_init_cap_notify
+	cmp al, VIRTIO_PCI_CAP_ISR_CFG
+	je virtio_net_init_cap_isr
 	cmp al, VIRTIO_PCI_CAP_DEVICE_CFG
 	je virtio_net_init_cap_device
 	ror eax, 16			; Move next entry offset to AL
@@ -96,6 +98,14 @@ virtio_net_init_cap_device:
 	add dl, 2
 	call os_bus_read
 	mov [virtio_net_device_offset], eax
+	pop rdx
+	jmp virtio_net_init_cap_next_offset
+
+virtio_net_init_cap_isr:
+	push rdx
+	add dl, 2
+	call os_bus_read
+	mov [virtio_net_isr_offset], eax
 	pop rdx
 	jmp virtio_net_init_cap_next_offset
 
@@ -351,6 +361,7 @@ net_virtio_ack_int:
 ; Variables
 virtio_net_notify_offset: dq 0
 virtio_net_notify_offset_multiplier: dq 0
+virtio_net_isr_offset: dq 0
 virtio_net_device_offset: dq 0
 netdescindex: dw 0
 netavailindex: dw 1
