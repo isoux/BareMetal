@@ -32,7 +32,8 @@ NIC_DeviceVendor_ID:	; The supported list of NICs
 ; Virtio
 dw 0x1AF4		; Driver ID
 dw 0x1AF4		; Vendor ID
-dw 0x1000		; Device
+dw 0x1000		; Device ID - legacy
+dw 0x1041		; Device ID - v1.0
 dw 0x0000
 
 ; Intel 8254x/8257x Gigabit Ethernet
