@@ -158,7 +158,9 @@ virtio_net_init_reset_wait:
 	mov [rsi+VIRTIO_DEVICE_FEATURE_SELECT], eax
 	mov eax, [rsi+VIRTIO_DEVICE_FEATURE]
 ;	btc eax, VIRTIO_NET_F_MQ	; Disable Multiqueue support for this driver
-	mov eax, 0x20
+;	bts eax, VIRTIO_NET_F_MAC
+;	bts eax, VIRTIO_NET_F_STATUS
+	mov eax, 0x00010020		; STATUS, MAC
 	push rax
 	xor eax, eax
 	mov [rsi+VIRTIO_DRIVER_FEATURE_SELECT], eax
@@ -238,7 +240,7 @@ virtio_net_init_reset_wait:
 	mov ax, 1
 	mov [rsi+VIRTIO_QUEUE_ENABLE], ax
 
-	; Populate the Next entries in the description ring
+	; Populate the Next entries in the description rings
 	; FIXME - Don't expect exactly 256 entries
 	mov eax, 1
 	mov rdi, os_net_mem
@@ -252,6 +254,25 @@ virtio_net_init_pop:
 	add al, 1
 	cmp al, 0
 	jne virtio_net_init_pop
+
+	; Populate RX desc
+	mov rdi, os_net_mem
+	mov rax, os_PacketBuffers	; Address for storing the data
+	stosq
+	mov eax, 1500			; Number of bytes
+	stosd
+	mov ax, VIRTQ_DESC_F_WRITE
+	stosw				; 16-bit Flags
+
+	; Populate RX avail
+	mov rdi, os_net_mem
+	add rdi, 0x1000
+	xor eax, eax
+	stosw				; 16-bit flags
+	mov ax, 1
+	stosw				; 16-bit index
+	mov ax, 0
+	stosw				; 16-bit ring
 
 	; 3.1.1 - Step 8 - At this point the device is “live”
 	mov al, VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER | VIRTIO_STATUS_DRIVER_OK | VIRTIO_STATUS_FEATURES_OK
@@ -307,7 +328,7 @@ net_virtio_transmit:
 	mov rdi, 0x1a5000
 	mov ax, 1			; 1 for no interrupts
 	stosw				; 16-bit flags
-	mov ax, [netavailindex]
+	mov ax, [nettxavailindex]
 	stosw				; 16-bit index
 	mov ax, 0
 	stosw				; 16-bit ring
@@ -321,14 +342,14 @@ net_virtio_transmit:
 
 	; Inspect the used ring
 	mov rdi, 0x1a6002		; Offset to start of Used Ring
-	mov bx, [netavailindex]
+	mov bx, [nettxavailindex]
 net_virtio_transmit_wait:
 	mov ax, [rdi]			; Load the index
 	cmp ax, bx
 	jne net_virtio_transmit_wait
 
-	add word [netdescindex], 2	; 2 entries were required
-	add word [netavailindex], 1
+	add word [nettxdescindex], 2	; 2 entries were required
+	add word [nettxavailindex], 1
 
 	pop rax
 	pop rbx
@@ -343,7 +364,36 @@ net_virtio_transmit_wait:
 ;  IN:	RDI = Location to store packet
 ; OUT:	RCX = Length of packet
 net_virtio_poll:
+	push rdi
+	push rax
 
+	; Get size of packet that was received
+	; Add it to 16bit val at start of os_PacketBuffers
+
+	; Re-populate RX desc
+	mov rdi, os_net_mem
+	mov rax, os_PacketBuffers	; Address for storing the data
+	stosq
+	mov eax, 1526			; Number of bytes
+	stosd
+	mov ax, VIRTQ_DESC_F_WRITE
+	stosw				; 16-bit Flags
+	
+	; Populate RX avail
+	mov rdi, os_net_mem
+	add rdi, 0x1000
+	xor eax, eax
+	stosw				; 16-bit flags
+	mov ax, [netrxavailindex]
+	stosw				; 16-bit index
+	mov ax, 0
+	stosw				; 16-bit ring
+
+	add word [netrxdescindex], 1	; 2 entries were required
+	add word [netrxavailindex], 1
+
+	pop rax
+	pop rdi
 	ret
 ; -----------------------------------------------------------------------------
 
@@ -354,7 +404,7 @@ net_virtio_poll:
 ; OUT:	RAX = Ethernet status
 ;	Uses RDI
 net_virtio_ack_int:
-
+	bts ax, 7
 	ret
 ; -----------------------------------------------------------------------------
 
@@ -363,8 +413,10 @@ virtio_net_notify_offset: dq 0
 virtio_net_notify_offset_multiplier: dq 0
 virtio_net_isr_offset: dq 0
 virtio_net_device_offset: dq 0
-netdescindex: dw 0
-netavailindex: dw 1
+netrxdescindex: dw 0
+netrxavailindex: dw 1
+nettxdescindex: dw 0
+nettxavailindex: dw 1
 
 align 16
 netheader:
@@ -372,21 +424,27 @@ dd 0x00
 dd 0x00
 dd 0x00
 
+;align 16
+;rxnetheader:
+;dd 0x00
+;dd 0x00
+;dd 0x00
+
 ; VIRTIO NET Registers
-VIRTIO_NET_MAC1			equ 0x14 ; 8-bit
-VIRTIO_NET_MAC2			equ 0x15 ; 8-bit
-VIRTIO_NET_MAC3			equ 0x16 ; 8-bit
-VIRTIO_NET_MAC4			equ 0x17 ; 8-bit
-VIRTIO_NET_MAC5			equ 0x18 ; 8-bit
-VIRTIO_NET_MAC6			equ 0x19 ; 8-bit
-VIRTIO_NET_STATUS		equ 0x1A ; 16-bit
-VIRTIO_NET_MAX_VIRTQ_PAIRS	equ 0x1C ; 16-bit
-VIRTIO_NET_MTU			equ 0x1E ; 16-bit
-VIRTIO_NET_SPEED		equ 0x20 ; 32-bit in units of 1 MBit per second, 0 to 0x7fffffff, or 0xffffffff for unknown
-VIRTIO_NET_DUPLEX		equ 0x24 ; 8-bit 0x01 for full duplex, 0x00 for half duplex
-VIRTIO_NET_RSS_MAX_KEY_SIZE	equ 0x25 ; 8-bit
-VIRTIO_NET_RSS_MAX_INT_TAB_LEN	equ 0x26 ; 16-bit
-VIRTIO_NET_SUPPORTED_HASH_TYPES	equ 0x28 ; 32-bit
+;VIRTIO_NET_MAC1			equ 0x14 ; 8-bit
+;VIRTIO_NET_MAC2			equ 0x15 ; 8-bit
+;VIRTIO_NET_MAC3			equ 0x16 ; 8-bit
+;VIRTIO_NET_MAC4			equ 0x17 ; 8-bit
+;VIRTIO_NET_MAC5			equ 0x18 ; 8-bit
+;VIRTIO_NET_MAC6			equ 0x19 ; 8-bit
+;VIRTIO_NET_STATUS		equ 0x1A ; 16-bit
+;VIRTIO_NET_MAX_VIRTQ_PAIRS	equ 0x1C ; 16-bit
+;VIRTIO_NET_MTU			equ 0x1E ; 16-bit
+;VIRTIO_NET_SPEED		equ 0x20 ; 32-bit in units of 1 MBit per second, 0 to 0x7fffffff, or 0xffffffff for unknown
+;VIRTIO_NET_DUPLEX		equ 0x24 ; 8-bit 0x01 for full duplex, 0x00 for half duplex
+;VIRTIO_NET_RSS_MAX_KEY_SIZE	equ 0x25 ; 8-bit
+;VIRTIO_NET_RSS_MAX_INT_TAB_LEN	equ 0x26 ; 16-bit
+;VIRTIO_NET_SUPPORTED_HASH_TYPES	equ 0x28 ; 32-bit
 
 ; VIRTIO_DEVICEFEATURES bits
 VIRTIO_NET_F_CSUM		equ 0 ; Device handles packets with partial checksum
