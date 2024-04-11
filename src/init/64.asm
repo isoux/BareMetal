@@ -56,6 +56,9 @@ make_interrupt_gate_stubs:
 	mov edi, 0x21
 	mov rax, keyboard
 	call create_gate
+	mov edi, 0xAB
+	mov rax, test_gate
+	call create_gate
 	mov edi, 0x80
 	mov rax, ap_wakeup
 	call create_gate
@@ -164,6 +167,10 @@ no_more_aps:
 	mov ecx, 1			; Keyboard IRQ
 	mov eax, 0x21			; Keyboard Interrupt Vector
 	call os_ioapic_mask_clear
+
+;	mov ecx, 0xAB			; Keyboard IRQ
+;	mov eax, 0xAB			; Keyboard Interrupt Vector
+;	call os_ioapic_mask_clear
 
 	ret
 ; -----------------------------------------------------------------------------

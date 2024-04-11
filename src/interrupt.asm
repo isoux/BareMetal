@@ -27,6 +27,17 @@ interrupt_gate:				; handler for all other interrupts
 
 
 ; -----------------------------------------------------------------------------
+; Default interrupt handler
+align 8
+test_gate:				; handler for all other interrupts
+	mov eax, 0x1234567
+;	call os_debug_dump_al
+	jmp $
+	iretq				; It was an undefined interrupt so return to caller
+; -----------------------------------------------------------------------------
+
+
+; -----------------------------------------------------------------------------
 ; Keyboard interrupt. IRQ 0x01, INT 0x21
 ; This IRQ runs whenever there is input on the keyboard
 align 8
@@ -113,7 +124,7 @@ network:
 	push rax
 	pushfq
 	cld				; Clear direction flag
-
+	call os_debug_dump_al
 	call b_net_ack_int		; Call the driver function to acknowledge the interrupt internally
 
 	bt ax, 0			; TX bit set (caused the IRQ?)

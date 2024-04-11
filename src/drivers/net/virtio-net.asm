@@ -39,6 +39,12 @@ virtio_net_init_32bit_bar:
 	call os_bus_read
 	mov [os_NetIRQ], al		; AL holds the IRQ
 
+	; Disable INTX
+	mov dl, 0x01			; Read Status/Command
+	call os_bus_read
+	bts eax, 10			; Set Interrupt Disable (bit 10)
+	call os_bus_write
+
 	; Gather required values from PCI Capabilities
 	mov dl, 1
 	call os_bus_read		; Read register 1 for Status/Command
@@ -54,7 +60,47 @@ virtio_net_init_cap_next:
 	call os_bus_read
 	cmp al, VIRTIO_PCI_CAP_VENDOR_CFG
 	je virtio_net_init_cap
+	cmp al, 0x11
+	je virtio_net_init_msix
 	shr eax, 8
+	jmp virtio_net_init_cap_next_offset
+
+virtio_net_init_msix:
+	push rdx
+
+	; Enable MSI-X and Mask it
+	call os_bus_read
+	bts eax, 31			; Enable MSIX
+	bts eax, 30			; Set Function Mask
+	call os_bus_write
+
+	; Verify it was enabled
+;	call os_bus_read
+	; Should be 0xC0XXXXXX
+
+	; Get the BIR. QEMU should be BAR1 which is 0xfebd5000
+	; Read the BAR is points to and the offset
+	; Read the pending bit BAR and offset
+	mov rdi, 0xfebd5000		; TODO remove this hardcoded value
+	mov rcx, 4			; TODO calculate how many entries
+nextmsi:
+	mov eax, 0xFEE00000		; 0xFEE for bits 31:20, Dest (19:12), RH (3), DM (2)
+	stosd				; Store Message Address Low
+	xor eax, eax			; Clear the high bits
+	stosd				; Store Message Address High
+	mov eax, 0x000040AB		; Trigger Mode (15), Level (14), Delivery Mode (10:8), Vector (7:0)
+	stosd				; Store Message Data
+	xor eax, eax			; Bits 31:1 are reserved, Masked (0) - 1 for masked
+	stosd				; Store Vector Control
+	dec rcx
+	cmp rcx, 0
+	jne nextmsi
+	pop rdx
+
+	; Unmask MSI-X
+	call os_bus_read
+	btc eax, 30			; Clear Function Mask
+	call os_bus_write
 	jmp virtio_net_init_cap_next_offset
 
 virtio_net_init_cap:
@@ -216,6 +262,12 @@ virtio_net_init_reset_wait:
 	mov ax, 1
 	mov [rsi+VIRTIO_QUEUE_ENABLE], ax
 
+	xor eax, eax
+	mov [rsi+VIRTIO_QUEUE_SELECT], ax
+	mov ax, 0x00AB
+	mov [rsi+VIRTIO_QUEUE_MSIX_VECTOR], ax
+	mov [rsi+VIRTIO_CONFIG_MSIX_VECTOR], ax
+
 	; Set up Queue 1
 	mov eax, 1
 	mov [rsi+VIRTIO_QUEUE_SELECT], ax
@@ -366,7 +418,7 @@ net_virtio_transmit_wait:
 net_virtio_poll:
 	push rdi
 	push rax
-
+;jmp $
 	; Get size of packet that was received
 	; Add it to 16bit val at start of os_PacketBuffers
 
@@ -389,7 +441,7 @@ net_virtio_poll:
 	mov ax, 0
 	stosw				; 16-bit ring
 
-	add word [netrxdescindex], 1	; 2 entries were required
+	add word [netrxdescindex], 1
 	add word [netrxavailindex], 1
 
 	pop rax
