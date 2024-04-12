@@ -13,6 +13,7 @@ net_virtio_init:
 	push rsi
 	push rdx
 	push rcx
+	push rbx
 	push rax
 
 ; Grab the Base I/O Address of the device
@@ -68,22 +69,32 @@ virtio_net_init_cap_next:
 virtio_net_init_msix:
 	push rdx
 
-	; Enable MSI-X and Mask it
+	; Enable MSI-X, Mask it, Get Table Size
 	call os_bus_read
+	mov ecx, eax			; Save for Table Size
 	bts eax, 31			; Enable MSIX
 	bts eax, 30			; Set Function Mask
 	call os_bus_write
+	shr ecx, 16			; Shift Message Control to low 16-bits
+	and cx, 0x7FF			; Keep bits 10:0
 
-	; Verify it was enabled
-;	call os_bus_read
-	; Should be 0xC0XXXXXX
-
-	; Get the BIR. QEMU should be BAR1 which is 0xfebd5000
-	; Read the BAR is points to and the offset
-	; Read the pending bit BAR and offset
-	mov rdi, 0xfebd5000		; TODO remove this hardcoded value
-	mov rcx, 4			; TODO calculate how many entries
-nextmsi:
+	; Read the BIR and Table Offset
+	push rdx
+	add dl, 1
+	call os_bus_read
+	mov ebx, eax			; EBX for the Table Offset
+	and ebx, 0xFFFFFFF8		; Clear bits 2:0
+	and eax, 0x00000007		; Keep bits 2:0 for the BIR
+	add al, 0x04			; Add offset to start of BARs
+	mov dl, al
+	call os_bus_read		; Read the BAR address
+	add rax, rbx			; Add offset to base
+	mov rdi, rax
+	pop rdx
+	
+	; Configure MSI-X Table
+	add cx, 1			; Table Size is 0-indexed
+virtio_net_init_msix_entry:
 	mov eax, 0xFEE00000		; 0xFEE for bits 31:20, Dest (19:12), RH (3), DM (2)
 	stosd				; Store Message Address Low
 	xor eax, eax			; Clear the high bits
@@ -92,15 +103,16 @@ nextmsi:
 	stosd				; Store Message Data
 	xor eax, eax			; Bits 31:1 are reserved, Masked (0) - 1 for masked
 	stosd				; Store Vector Control
-	dec rcx
-	cmp rcx, 0
-	jne nextmsi
+	dec cx
+	cmp cx, 0
+	jne virtio_net_init_msix_entry
 	pop rdx
 
 	; Unmask MSI-X
 	call os_bus_read
 	btc eax, 30			; Clear Function Mask
 	call os_bus_write
+
 	jmp virtio_net_init_cap_next_offset
 
 virtio_net_init_cap:
@@ -259,14 +271,13 @@ virtio_net_init_reset_wait:
 	rol rax, 32
 	mov [rsi+VIRTIO_QUEUE_DEVICE+8], eax
 	rol rax, 32
+;	mov ax, 0x00AB
+;	mov [rsi+VIRTIO_QUEUE_MSIX_VECTOR], ax
 	mov ax, 1
 	mov [rsi+VIRTIO_QUEUE_ENABLE], ax
 
-	xor eax, eax
-	mov [rsi+VIRTIO_QUEUE_SELECT], ax
-	mov ax, 0x00AB
-	mov [rsi+VIRTIO_QUEUE_MSIX_VECTOR], ax
-	mov [rsi+VIRTIO_CONFIG_MSIX_VECTOR], ax
+;	mov ax, 0x00AB
+;	mov [rsi+VIRTIO_CONFIG_MSIX_VECTOR], ax
 
 	; Set up Queue 1
 	mov eax, 1
@@ -332,6 +343,7 @@ virtio_net_init_pop:
 
 virtio_net_init_error:
 	pop rax
+	pop rbx
 	pop rcx
 	pop rdx
 	pop rsi
@@ -418,7 +430,7 @@ net_virtio_transmit_wait:
 net_virtio_poll:
 	push rdi
 	push rax
-;jmp $
+
 	; Get size of packet that was received
 	; Add it to 16bit val at start of os_PacketBuffers
 
