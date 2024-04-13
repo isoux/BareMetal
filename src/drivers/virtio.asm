@@ -80,5 +80,7 @@ VIRTIO_F_NOTIFICATION_DATA		equ 38
 VIRTIO_F_NOTIF_CONFIG_DATA		equ 39
 VIRTIO_F_RING_RESET			equ 40
 
+VIRTIO_MSI_NO_VECTOR			equ 0xFFFF
+
 ; =============================================================================
 ; EOF

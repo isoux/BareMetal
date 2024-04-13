@@ -91,13 +91,13 @@ virtio_net_init_msix:
 	add rax, rbx			; Add offset to base
 	mov rdi, rax
 	pop rdx
-	
+
 	; Configure MSI-X Table
 	add cx, 1			; Table Size is 0-indexed
 virtio_net_init_msix_entry:
-	mov eax, 0xFEE00000		; 0xFEE for bits 31:20, Dest (19:12), RH (3), DM (2)
+	mov rax, [os_LocalAPICAddress]	; 0xFEE for bits 31:20, Dest (19:12), RH (3), DM (2)
 	stosd				; Store Message Address Low
-	xor eax, eax			; Clear the high bits
+	shr rax, 32			; Rotate the high bits to EAX
 	stosd				; Store Message Address High
 	mov eax, 0x000040AB		; Trigger Mode (15), Level (14), Delivery Mode (10:8), Vector (7:0)
 	stosd				; Store Message Data
@@ -251,6 +251,9 @@ virtio_net_init_reset_wait:
 	; reading and possibly writing the device’s virtio configuration space
 	; population of virtqueues
 
+	mov ax, 0x0000
+	mov [rsi+VIRTIO_CONFIG_MSIX_VECTOR], ax
+
 	; Set up Queue 0
 	xor eax, eax
 	mov [rsi+VIRTIO_QUEUE_SELECT], ax
@@ -271,13 +274,11 @@ virtio_net_init_reset_wait:
 	rol rax, 32
 	mov [rsi+VIRTIO_QUEUE_DEVICE+8], eax
 	rol rax, 32
-;	mov ax, 0x00AB
-;	mov [rsi+VIRTIO_QUEUE_MSIX_VECTOR], ax
+	mov ax, 0x0001
+	mov [rsi+VIRTIO_QUEUE_MSIX_VECTOR], ax
+	mov ax, [rsi+VIRTIO_QUEUE_MSIX_VECTOR]
 	mov ax, 1
 	mov [rsi+VIRTIO_QUEUE_ENABLE], ax
-
-;	mov ax, 0x00AB
-;	mov [rsi+VIRTIO_CONFIG_MSIX_VECTOR], ax
 
 	; Set up Queue 1
 	mov eax, 1
