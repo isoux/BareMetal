@@ -22,6 +22,7 @@
 %include "drivers/storage/ata.asm"
 
 ; Network
+%include "drivers/net/i8259x.asm"
 %include "drivers/net/i8254x.asm"
 %include "drivers/net/virtio-net.asm"
 
@@ -99,6 +100,12 @@ dw 0x10f0		; 82578DC
 dw 0x10f6		; 82574L
 dw 0x1107		; 82544EI
 dw 0x1112		; 82544GC
+dw 0x0000
+
+; Intel 8259x/X540/X550 10 Gigabit Ethernet
+dw 0x8254		; Driver ID
+dw 0x8086		; Vendor ID
+dw 0x1560		; X540T1
 dw 0x0000
 
 ; End of list

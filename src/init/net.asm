@@ -46,11 +46,24 @@ init_net_probe_find_next_device:
 	jmp init_net_probe_find_next_device	; Check the next device
 
 init_net_probe_found:
+	cmp bx, 0x8259
+	je init_net_probe_found_i8259x
 	cmp bx, 0x8254
 	je init_net_probe_found_i8254x
 	cmp bx, 0x1AF4
 	je init_net_probe_found_virtio
 	jmp init_net_probe_not_found
+
+init_net_probe_found_i8259x:
+	call net_i8259x_init
+	mov rdi, os_net_transmit
+	mov rax, net_i8259x_transmit
+	stosq
+	mov rax, net_i8259x_poll
+	stosq
+	mov rax, net_i8259x_ack_int
+	stosq
+	jmp init_net_probe_found_finish
 
 init_net_probe_found_i8254x:
 	call net_i8254x_init
