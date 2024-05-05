@@ -103,7 +103,7 @@ dw 0x1112		; 82544GC
 dw 0x0000
 
 ; Intel 8259x/X540/X550 10 Gigabit Ethernet
-dw 0x8254		; Driver ID
+dw 0x8259		; Driver ID
 dw 0x8086		; Vendor ID
 dw 0x1560		; X540T1
 dw 0x0000
