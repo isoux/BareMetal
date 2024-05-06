@@ -105,6 +105,15 @@ net_i8259x_init_dma_wait:
 	jnc net_i8259x_init_dma_wait		; If not equal, keep waiting
 
 	; Set up the PHY and the link (4.6.4)
+;	mov eax, [rsi+i8259x_AUTOC]
+;	or eax, 0x0000E000			; Set LMS (bits 15:13) for KX/KX4/KR auto-negotiation enable
+;	mov [rsi+i8259x_AUTOC], eax
+;	mov eax, [rsi+i8259x_AUTOC]
+;						; Set 10G_PMA_PMD_PARALLEL (bits 8:7)
+;	mov [rsi+i8259x_AUTOC], eax
+	mov eax, [rsi+i8259x_AUTOC]
+	bts eax, 12				; Restart_AN
+	mov [rsi+i8259x_AUTOC], eax
 
 	; Initialize all statistical counters (4.6.5)
 	; These registers are cleared by the device after they are read
@@ -124,6 +133,23 @@ net_i8259x_init_dma_wait:
 	; Initialize receive (4.6.7)
 
 	; Initialize transmit (4.6.8)
+	; i8259x_HLREG0
+	; i8259x_TXPBSIZE
+	; i8259x_DTXMXSZRQ
+	; i8259x_RTTDCS
+
+	mov rax, os_tx_desc
+	mov [rsi+i8259x_TDBAL], eax
+	shr rax, 32
+	mov [rsi+i8259x_TDBAH], eax
+	mov eax, 32768
+	mov [rsi+i8259x_TDLEN], eax
+	xor eax, eax
+	mov [rsi+i8259x_TDH], eax
+	mov [rsi+i8259x_TDT], eax
+
+	; i8259x_TXDCTL
+	; i8259x_DMATXCTL
 
 	; Enable interrupts (4.6.3.1)
 ;	mov eax, VALUE_HERE
@@ -232,14 +258,24 @@ i8259x_EIAM		equ 0x00890 ; Extended Interrupt Auto Mask Enable Register
 ; MSI-X Table Registers
 
 ; Receive Registers
-i8259x_RAL		equ 0x05400 ; Receive Address Low (0x0A200?)
-i8259x_RAH		equ 0x05404 ; Receive Address High (0x0A204?)
+i8259x_RAL		equ 0x0A200 ; Receive Address Low (Lower 32-bits of 48-bit address)
+i8259x_RAH		equ 0x0A204 ; Receive Address High (Upper 16-bits of 48-bit address). Bit 31 should be set for Address Valid
 
 ; Receive DMA Registers
 
 ; Transmit Registers
+i8259x_DMATXCTL		equ 0x04A80 ; DMA Tx Control
+i8259x_TDBAL		equ 0x06000 ; Transmit Descriptor Base Address Low
+i8259x_TDBAH		equ 0x06004 ; Transmit Descriptor Base Address High
+i8259x_TDLEN		equ 0x06008 ; Transmit Descriptor Length (Bits 19:0 in bytes)
+i8259x_TDH		equ 0x06010 ; Transmit Descriptor Head (Bits 15:0)
+i8259x_TDT		equ 0x06018 ; Transmit Descriptor Tail (Bits 15:0)
+i8259x_TXDCTL		equ 0x06028 ; Transmit Descriptor Control (Bit 25 - Enable)
+i8259x_DTXMXSZRQ	equ 0x08100 ; DMA Tx TCP Max Allow Size Requests
+TXPBSIZE		equ 0x0CC00 ; Transmit Packet Buffer Size
 
 ; DCB Registers
+i8259x_RTTDCS		equ 0x04900 ; DCB Transmit Descriptor Plane Control and Status
 
 ; DCA Registers
 
@@ -260,6 +296,13 @@ i8259x_RAH		equ 0x05404 ; Receive Address High (0x0A204?)
 ; Flow Programming Registers
 
 ; MAC Registers
+
+i8259x_HLREG0		equ 0x04240 ; MAC Core Control 0 Register
+i8259x_HLREG1		equ 0x04244 ; MAC Core Status 1 Register
+i8259x_AUTOC		equ 0x042A0 ; Auto-Negotiation Control Register
+i8259x_AUTOC2		equ 0x042A8 ; Auto-Negotiation Control Register 2
+i8259x_LINKS		equ 0x042A4 ; Link Status Register
+i8259x_LINKS2		equ 0x04324 ; Link Status Register 2
 
 ; Statistic Registers
 i8259x_GPRC		equ 0x04074 ; Good Packets Received Count
