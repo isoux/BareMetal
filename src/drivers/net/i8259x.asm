@@ -56,6 +56,9 @@ net_i8259x_init_32bit_bar:
 ;	; Issue a global reset (4.6.3.2)
 ;	mov eax, i8259x_CTRL_RST_MASK		; Load the mask for a software reset and link reset
 ;	mov [rsi+i8259x_CTRL], eax
+;	mov eax, [rsi+i8259x_CTRL]
+;	; wait for it to be cleared
+;	; wait 10ns
 ;
 ;	; Disable Interrupts again (4.6.3.1)
 ;	xor eax, eax
@@ -63,6 +66,40 @@ net_i8259x_init_32bit_bar:
 ;	mov eax, i8259x_IRQ_CLEAR_MASK
 ;	mov [rsi+i8259x_EIMC], eax
 ;	mov eax, [rsi+i8259x_EICR]
+;
+;	; Wait for EEPROM auto read completion (4.6.3)
+;	mov eax, i8259x_EEC_ARD
+;	mov [rsi+i8259x_EEC], eax
+;
+;	; Wait for DMA initialization done (4.6.3)
+;	mov eax, i8259x_RDRXCTL_DMAIDONE
+;	mov [rsi+i8259x_RDRXCTL], eax
+;
+;	; Set up the PHY and the link (4.6.4)
+;
+;	; Initialize all statistical counters (4.6.5)
+;	; These registers are cleared after they are read
+;	mov eax, [rsi+i8259x_GPRC]		; RX packets
+;	mov eax, [rsi+i8259x_GPTC]		; TX packets
+;	xor eax, eax
+;	mov eax, [rsi+i8259x_GORCL]
+;	mov ebx, [rsi+i8259x_GORCH]
+;	shl rbx, 32
+;	add rax, rbx				; RX bytes
+;	xor eax, eax
+;	mov eax, [rsi+i8259x_GOTCL]
+;	mov ebx, [rsi+i8259x_GOTCH]
+;	shl rbx, 32
+;	add rax, rbx				; TX bytes
+;
+;	; Initialize receive (4.6.7)
+;
+;	; Initialize transmit (4.6.8)
+;
+;	; Enable interrupts (4.6.3.1)
+;	mov eax, VALUE_HERE
+;	mov [rsi+i8259x_EIMS], eax
+
 
 	; Grab the MAC address
 	mov rsi, [os_NetIOBaseMem]
@@ -156,20 +193,35 @@ i8259x_TCPTIMER		equ 0x0004C
 i8259x_CORESPARE	equ 0x00600
 i8259x_EICR		equ 0x00800 ; Extended Interrupt Cause Register
 i8259x_EICS		equ 0x00808 ; Extended Interrupt Cause Set Register
-i8259x_EIMS		equ 0x00880 ; Extended Interrupt Mask Set/ Read Register
+i8259x_EIMS		equ 0x00880 ; Extended Interrupt Mask Set / Read Register
 i8259x_EIMC		equ 0x00888 ; Extended Interrupt Mask Clear Register
 i8259x_EIAC		equ 0x00810 ; Extended Interrupt Auto Clear Register
 i8259x_EIAM		equ 0x00890 ; Extended Interrupt Auto Mask Enable Register
+i8259x_RDRXCTL		equ 0x02F00
+i8259x_GPRC		equ 0x04074
+i8259x_BPRC		equ 0x04078
+i8259x_MPRC		equ 0x0407C
+i8259x_GPTC		equ 0x04080
+i8259x_GORCL		equ 0x04088
+i8259x_GORCH		equ 0x0408C
+i8259x_GOTCL		equ 0x04090
+i8259x_GOTCH		equ 0x04094
 i8259x_EXVET		equ 0x05078
 i8259x_RAL		equ 0x05400
 i8259x_RAH		equ 0x05404
-
+i8259x_EEC		equ 0x10010
 
 ; CTRL Bit Masks
 i8259x_CTRL_GIO_DIS	equ 0x00000004 ; Global IO Master Disable bit
 i8259x_CTRL_LNK_RST	equ 0x00000008 ; Link Reset. Resets everything.
 i8259x_CTRL_RST		equ 0x04000000 ; Reset (SW)
 i8259x_CTRL_RST_MASK	equ i8259x_CTRL_LNK_RST | i8259x_CTRL_RST
+
+; EEC Bit Masks
+i8259x_EEC_ARD		equ 0x00000200 ; EEPROM Auto Read Done
+
+; RDRXCTL Bit Masks
+i8259x_RDRXCTL_DMAIDONE	equ 0x00000008 ; DMA init cycle done
 
 i8259x_IRQ_CLEAR_MASK	equ 0xFFFFFFFF
 
