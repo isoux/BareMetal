@@ -36,6 +36,10 @@
 
 * [Software Developer's Manual](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/pcie-gbe-controllers-open-source-manual.pdf?cmdf=PCI%2FPCI-E+Family+of+Gigabit+Ethernet+Controllers+Software+Developer’s+Manual)
 
+### Intel 8259x (ixbge)
+
+* [Datasheet](https://www.intel.com/content/dam/www/public/us/en/documents/datasheets/82599-10-gbe-controller-datasheet.pdf)
+
 
 ## Storage
 
