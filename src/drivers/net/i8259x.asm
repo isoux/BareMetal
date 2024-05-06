@@ -37,23 +37,44 @@ net_i8259x_init_32bit_bar:
 	call os_bus_read
 	mov [os_NetIRQ], al			; AL holds the IRQ
 
-	; Enable PCI Bus Mastering
+	; Enable PCI Bus Mastering and Memory Space
 	mov dl, 0x01				; Get Status/Command
 	call os_bus_read
-	bts eax, 2
+	bts eax, 2				; Bus Master
+	bts eax, 1				; Memory Space
 	call os_bus_write
+
+;	mov rsi, [os_NetIOBaseMem]
+;
+;	; Disable Interrupts (4.6.3.1)
+;	xor eax, eax
+;	mov [rsi+i8259x_EIMS], eax
+;	mov eax, i8259x_IRQ_CLEAR_MASK
+;	mov [rsi+i8259x_EIMC], eax
+;	mov eax, [rsi+i8259x_EICR]
+;
+;	; Issue a global reset (4.6.3.2)
+;	mov eax, i8259x_CTRL_RST_MASK		; Load the mask for a software reset and link reset
+;	mov [rsi+i8259x_CTRL], eax
+;
+;	; Disable Interrupts again (4.6.3.1)
+;	xor eax, eax
+;	mov [rsi+i8259x_EIMS], eax
+;	mov eax, i8259x_IRQ_CLEAR_MASK
+;	mov [rsi+i8259x_EIMC], eax
+;	mov eax, [rsi+i8259x_EICR]
 
 	; Grab the MAC address
 	mov rsi, [os_NetIOBaseMem]
-	mov eax, [rsi+I8259X_RAL]		; RAL
+	mov rax, [rsi+i8259x_RAL]
 	mov [os_NetMAC], al
-	shr eax, 8
+	shr rax, 8
 	mov [os_NetMAC+1], al
-	shr eax, 8
+	shr rax, 8
 	mov [os_NetMAC+2], al
-	shr eax, 8
+	shr rax, 8
 	mov [os_NetMAC+3], al
-	mov eax, [rsi+I8259X_RAH]		; RAH
+	shr rax, 8
 	mov [os_NetMAC+4], al
 	shr eax, 8
 	mov [os_NetMAC+5], al
@@ -109,33 +130,48 @@ net_i8259x_ack_int:
 
 
 ; Maximum packet size
-I8259X_MAX_PKT_SIZE	equ 16384
+i8259x_MAX_PKT_SIZE	equ 16384
 
 ; Register list
-I8259X_CTRL		equ 0x00000
-I8259X_STATUS		equ 0x00008
-I8259X_CTRL_EXT		equ 0x00018
-I8259X_ESDP		equ 0x00020
-I8259X_EODSDP		equ 0x00028
-I8259X_I2CCTL_82599	equ 0x00028
-I8259X_I2CCTL		equ I8259X_I2CCTL_82599
-I8259X_I2CCTL_X540	equ I8259X_I2CCTL_82599
-I8259X_I2CCTL_X550	equ 0x15F5C
-I8259X_I2CCTL_X550EM_x	equ I8259X_I2CCTL_X550
-I8259x_I2CCTL_X550EM_a	equ I8259X_I2CCTL_X550
-;I8259x_I2CCTL_BY_MAC
-I8259x_PHY_GPIO		equ 0x00028
-I8259x_MAC_GPIO		equ 0x00030
-I8259x_PHYINT_STATUS0	equ 0x00100
-I8259x_PHYINT_STATUS1	equ 0x00104
-I8259x_PHYINT_STATUS2	equ 0x00108
-I8259x_LEDCTL		equ 0x00200
-I8259x_FRTIMER		equ 0x00048
-I8259x_TCPTIMER		equ 0x0004C
-I8259x_CORESPARE	equ 0x00600
-I8259X_RAL		equ 0x05400
-I8259X_RAH		equ 0x05404
-I8259x_EXVET		equ 0x05078
+i8259x_CTRL		equ 0x00000
+i8259x_STATUS		equ 0x00008
+i8259x_CTRL_EXT		equ 0x00018
+i8259x_ESDP		equ 0x00020
+i8259x_EODSDP		equ 0x00028
+i8259x_I2CCTL_82599	equ 0x00028
+i8259x_I2CCTL		equ i8259x_I2CCTL_82599
+i8259x_I2CCTL_X540	equ i8259x_I2CCTL_82599
+i8259x_I2CCTL_X550	equ 0x15F5C
+i8259x_I2CCTL_X550EM_x	equ i8259x_I2CCTL_X550
+i8259x_I2CCTL_X550EM_a	equ i8259x_I2CCTL_X550
+;i8259x_I2CCTL_BY_MAC
+i8259x_PHY_GPIO		equ 0x00028
+i8259x_MAC_GPIO		equ 0x00030
+i8259x_PHYINT_STATUS0	equ 0x00100
+i8259x_PHYINT_STATUS1	equ 0x00104
+i8259x_PHYINT_STATUS2	equ 0x00108
+i8259x_LEDCTL		equ 0x00200
+i8259x_FRTIMER		equ 0x00048
+i8259x_TCPTIMER		equ 0x0004C
+i8259x_CORESPARE	equ 0x00600
+i8259x_EICR		equ 0x00800 ; Extended Interrupt Cause Register
+i8259x_EICS		equ 0x00808 ; Extended Interrupt Cause Set Register
+i8259x_EIMS		equ 0x00880 ; Extended Interrupt Mask Set/ Read Register
+i8259x_EIMC		equ 0x00888 ; Extended Interrupt Mask Clear Register
+i8259x_EIAC		equ 0x00810 ; Extended Interrupt Auto Clear Register
+i8259x_EIAM		equ 0x00890 ; Extended Interrupt Auto Mask Enable Register
+i8259x_EXVET		equ 0x05078
+i8259x_RAL		equ 0x05400
+i8259x_RAH		equ 0x05404
+
+
+; CTRL Bit Masks
+i8259x_CTRL_GIO_DIS	equ 0x00000004 ; Global IO Master Disable bit
+i8259x_CTRL_LNK_RST	equ 0x00000008 ; Link Reset. Resets everything.
+i8259x_CTRL_RST		equ 0x04000000 ; Reset (SW)
+i8259x_CTRL_RST_MASK	equ i8259x_CTRL_LNK_RST | i8259x_CTRL_RST
+
+i8259x_IRQ_CLEAR_MASK	equ 0xFFFFFFFF
 
 ; =============================================================================
 ; EOF
