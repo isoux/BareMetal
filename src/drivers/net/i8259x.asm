@@ -92,7 +92,7 @@ net_i8259x_init_reset_wait:
 	mov [rsi+i8259x_EEC], eax		; Write the new value
 net_i8259x_init_eeprom_wait:
 	mov eax, [rsi+i8259x_EEC]		; Read current value
-	bt eax, 9
+	bt eax, 9				; i8259x_EEC_ARD
 	jnc net_i8259x_init_eeprom_wait		; If not equal, keep waiting
 
 	; Wait for DMA initialization done (4.6.3)
@@ -101,7 +101,7 @@ net_i8259x_init_eeprom_wait:
 	mov [rsi+i8259x_RDRXCTL], eax		; Write the new value
 net_i8259x_init_dma_wait:
 	mov eax, [rsi+i8259x_RDRXCTL]		; Read current value
-	bt eax, 3
+	bt eax, 3				; i8259x_RDRXCTL_DMAIDONE
 	jnc net_i8259x_init_dma_wait		; If not equal, keep waiting
 
 	; Set up the PHY and the link (4.6.4)
@@ -131,13 +131,41 @@ net_i8259x_init_dma_wait:
 	add rax, rbx				; TX bytes
 
 	; Initialize receive (4.6.7)
+	xor eax, eax				; RXEN = 0
+	mov [rsi+i8259x_RXCTRL], eax		; Disable receive
+	; i8259x_RXPBSIZE
+	; i8259x_HLREG0
+	; i8259x_HLREG0_RXCRCSTRP
+	; i8259x_RDRXCTL
+	; i8259x_RDRXCTL_CRCSTRIP
+	mov eax, [rsi+i8259x_FCTRL]
+	or eax, i8259x_FCTRL_BAM		; Accept broadcast packets
+	mov [rsi+i8259x_FCTRL], eax
+	; i8259x_SRRCTL
+	mov rax, os_rx_desc
+	mov [rsi+i8259x_RDBAL], eax
+	shr rax, 32
+	mov [rsi+i8259x_RDBAH], eax
+	mov eax, 32768
+	mov [rsi+i8259x_RDLEN], eax
+	xor eax, eax
+	mov [rsi+i8259x_RDH], eax
+	mov [rsi+i8259x_RDT], eax
+	; i8259x_CTRL_EXT
+	; i8259x_DCA_RXCTRL
+;	mov eax, 1				; RXEN = 1
+;	mov [rsi+i8259x_RXCTRL], eax		; Enable receive
 
 	; Initialize transmit (4.6.8)
-	; i8259x_HLREG0
-	; i8259x_TXPBSIZE
-	; i8259x_DTXMXSZRQ
-	; i8259x_RTTDCS
-
+	mov eax, [rsi+i8259x_HLREG0]		; Enable CRC offload and small packet padding
+	or eax, 1 << i8259x_HLREG0_TXCRCEN | 1 << i8259x_HLREG0_TXPADEN
+	mov [rsi+i8259x_HLREG0], eax
+	; i8259x_TXPBSIZE - Leave as default for now
+	mov eax, 0x0000FFFF
+	mov [rsi+i8259x_DTXMXSZRQ], eax
+	mov eax, [rsi+i8259x_RTTDCS]
+	btc eax, 6				; ARBDIS
+	mov [rsi+i8259x_RTTDCS], eax
 	mov rax, os_tx_desc
 	mov [rsi+i8259x_TDBAL], eax
 	shr rax, 32
@@ -147,13 +175,26 @@ net_i8259x_init_dma_wait:
 	xor eax, eax
 	mov [rsi+i8259x_TDH], eax
 	mov [rsi+i8259x_TDT], eax
+	mov eax, [rsi+i8259x_DMATXCTL]
+	or eax, 1				; Transmit Enable, bit 0 TE
+	mov [rsi+i8259x_DMATXCTL], eax
+;	mov eax, [rsi+i8259x_TXDCTL]
+	mov eax, 0x2040824 ;0x27F7F7F		; bit 25 ENABLE
+	mov [rsi+i8259x_TXDCTL], eax
 
-	; i8259x_TXDCTL
-	; i8259x_DMATXCTL
+; DEBUG - Enable Promiscuous mode
+;	mov eax, [rsi+i8259x_FCTRL]
+;	or eax, 1 << i8259x_FCTRL_MPE | 1 << i8259x_FCTRL_UPE
+;	mov [rsi+i8259x_FCTRL], eax
 
 	; Enable interrupts (4.6.3.1)
 ;	mov eax, VALUE_HERE
 ;	mov [rsi+i8259x_EIMS], eax
+
+	; Set Driver Loaded bit
+	mov eax, [rsi+i8259x_CTRL_EXT]
+	or eax, 1 << i8259x_CTRL_EXT_DRVLOAD
+	mov [rsi+i8259x_CTRL_EXT], eax
 
 ;	; Reset the device
 ;	call net_i8259x_reset
@@ -256,12 +297,23 @@ i8259x_EIAC		equ 0x00810 ; Extended Interrupt Auto Clear Register
 i8259x_EIAM		equ 0x00890 ; Extended Interrupt Auto Mask Enable Register
 
 ; MSI-X Table Registers
+i8259x_PBACL		equ 0x110C0 ; MSI-X PBA Clear
 
 ; Receive Registers
+i8259x_FCTRL		equ 0x05080 ; Filter Control Register
 i8259x_RAL		equ 0x0A200 ; Receive Address Low (Lower 32-bits of 48-bit address)
 i8259x_RAH		equ 0x0A204 ; Receive Address High (Upper 16-bits of 48-bit address). Bit 31 should be set for Address Valid
 
 ; Receive DMA Registers
+i8259x_RDBAL		equ 0x01000 ; Receive Descriptor Base Address Low
+i8259x_RDBAH		equ 0x01004 ; Receive Descriptor Base Address High
+i8259x_RDLEN		equ 0x01008 ; Receive Descriptor Length
+i8259x_RDH		equ 0x01010 ; Receive Descriptor Head
+i8259x_RDT		equ 0x01018 ; Receive Descriptor Tail
+i8259x_RXCTRL		equ 0x01028 ; Receive Descriptor Control
+i8259x_RDRXCTL		equ 0x02F00 ; Receive DMA Control Register
+i8259x_SRRCTL		equ 0x01014 ; Split Receive Control Registers
+i8259x_RXPBSIZE		equ 0x03C00 ; Receive Packet Buffer Size
 
 ; Transmit Registers
 i8259x_DMATXCTL		equ 0x04A80 ; DMA Tx Control
@@ -272,12 +324,13 @@ i8259x_TDH		equ 0x06010 ; Transmit Descriptor Head (Bits 15:0)
 i8259x_TDT		equ 0x06018 ; Transmit Descriptor Tail (Bits 15:0)
 i8259x_TXDCTL		equ 0x06028 ; Transmit Descriptor Control (Bit 25 - Enable)
 i8259x_DTXMXSZRQ	equ 0x08100 ; DMA Tx TCP Max Allow Size Requests
-TXPBSIZE		equ 0x0CC00 ; Transmit Packet Buffer Size
+i8259x_TXPBSIZE		equ 0x0CC00 ; Transmit Packet Buffer Size
 
 ; DCB Registers
 i8259x_RTTDCS		equ 0x04900 ; DCB Transmit Descriptor Plane Control and Status
 
 ; DCA Registers
+i8259x_DCA_RXCTRL	equ 0x0100C ; Rx DCA Control Register
 
 ; Security Registers
 
@@ -296,7 +349,6 @@ i8259x_RTTDCS		equ 0x04900 ; DCB Transmit Descriptor Plane Control and Status
 ; Flow Programming Registers
 
 ; MAC Registers
-
 i8259x_HLREG0		equ 0x04240 ; MAC Core Control 0 Register
 i8259x_HLREG1		equ 0x04244 ; MAC Core Status 1 Register
 i8259x_AUTOC		equ 0x042A0 ; Auto-Negotiation Control Register
@@ -323,39 +375,43 @@ i8259x_GOTCH		equ 0x04094 ; Good Octets Transmitted Count High
 ; Virtualization PF Registers
 
 
-;i8259x_EODSDP		equ 0x00028
-;i8259x_I2CCTL_82599	equ 0x00028
-;i8259x_I2CCTL		equ i8259x_I2CCTL_82599
-;i8259x_I2CCTL_X540	equ i8259x_I2CCTL_82599
-;i8259x_I2CCTL_X550	equ 0x15F5C
-;i8259x_I2CCTL_X550EM_x	equ i8259x_I2CCTL_X550
-;i8259x_I2CCTL_X550EM_a	equ i8259x_I2CCTL_X550
-;i8259x_I2CCTL_BY_MAC
-i8259x_PHY_GPIO		equ 0x00028
-i8259x_MAC_GPIO		equ 0x00030
-i8259x_PHYINT_STATUS0	equ 0x00100
-i8259x_PHYINT_STATUS1	equ 0x00104
-i8259x_PHYINT_STATUS2	equ 0x00108
-
-i8259x_FRTIMER		equ 0x00048
-i8259x_TCPTIMER		equ 0x0004C
-i8259x_CORESPARE	equ 0x00600
-i8259x_RDRXCTL		equ 0x02F00
-
-i8259x_EXVET		equ 0x05078 ; Extended VLAN Ether Type
 
 
-; CTRL Bit Masks
-i8259x_CTRL_GIO_DIS	equ 2 ; PCIe Master Disable
-i8259x_CTRL_LNK_RST	equ 3 ; Link Reset
+; CTRL (Device Control Register; 0x00000 / 0x00004; RW) Bit Masks
+i8259x_CTRL_MSTR_DIS	equ 2 ; PCIe Master Disable
+i8259x_CTRL_LRST	equ 3 ; Link Reset
 i8259x_CTRL_RST		equ 26 ; Device Reset
 ; All other bits are reserved and should be written as 0
-i8259x_CTRL_RST_MASK	equ 1 << i8259x_CTRL_LNK_RST | 1 << i8259x_CTRL_RST
+i8259x_CTRL_RST_MASK	equ 1 << i8259x_CTRL_LRST | 1 << i8259x_CTRL_RST
 
-; STATUS Bit Masks
+; STATUS (Device Status Register; 0x00008; RO) Bit Masks
 i8259x_STATUS_LINKUP	equ 7 ; Linkup Status Indication
 i8259x_STATUS_MASEN	equ 19 ; This is a status bit of the appropriate CTRL.PCIe Master Disable bit.
 ; All other bits are reserved and should be written as 0
+
+; CTRL_EXT (Extended Device Control Register; 0x00018; RW)
+i8259x_CTRL_EXT_DRVLOAD	equ 28 ; Driver loaded and the corresponding network interface is enabled
+
+; RXCTRL (Receive Control Register; 0x03000; RW) Bit Masks
+i8259x_RXCTRL_RXEN	equ 0 ; Receive Enable
+; All other bits are reserved and should be written as 0
+
+; HLREG0 (MAC Core Control 0 Register; 0x04240; RW) Bit Masks
+i8259x_HLREG0_TXCRCEN	equ 0 ; Tx CRC Enable
+i8259x_HLREG0_JUMBOEN	equ 2 ; Jumbo Frame Enable - size is defined by MAXFRS
+i8259x_HLREG0_TXPADEN	equ 10 ; Tx Pad Frame Enable (pads to at least 64 bytes)
+i8259x_HLREG0_LPBK	equ 16 ; Loopback Enable
+
+; LINKS (Link Status Register; 0x042A4; RO)
+i8259x_LINKS_LinkStatus	equ 7 ; 1 - Link is up
+i8259x_LINKS_LINK_SPEED	equ 28 ; 0 - 1GbE, 1 - 10GbE - Bit 29 must be 1 for this to be valid
+i8259x_LINKS_Link_Up	equ 30 ; 1 - Link is up
+
+; FCTRL (Filter Control Register; 0x05080; RW) Bit Masks
+i8259x_FCTRL_SBP	equ 1 ; Store Bad Packets
+i8259x_FCTRL_MPE	equ 8 ; Multicast Promiscuous Enable
+i8259x_FCTRL_UPE	equ 9 ; Unicast Promiscuous Enable
+i8259x_FCTRL_BAM	equ 10 ; Broadcast Accept Mode
 
 ; TODO Change bit masks to actual bits
 ; EEC Bit Masks
