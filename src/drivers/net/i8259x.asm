@@ -160,7 +160,8 @@ net_i8259x_init_dma_wait:
 	mov eax, [rsi+i8259x_HLREG0]		; Enable CRC offload and small packet padding
 	or eax, 1 << i8259x_HLREG0_TXCRCEN | 1 << i8259x_HLREG0_TXPADEN
 	mov [rsi+i8259x_HLREG0], eax
-	; i8259x_TXPBSIZE - Leave as default for now
+	mov eax, 32768
+	mov [rsi+i8259x_TXPBSIZE], eax
 	mov eax, 0x0000FFFF
 	mov [rsi+i8259x_DTXMXSZRQ], eax
 	mov eax, [rsi+i8259x_RTTDCS]
@@ -181,6 +182,10 @@ net_i8259x_init_dma_wait:
 ;	mov eax, [rsi+i8259x_TXDCTL]
 	mov eax, 0x2040824 ;0x27F7F7F		; bit 25 ENABLE
 	mov [rsi+i8259x_TXDCTL], eax
+net_i8259x_init_tx_enable_wait:
+	mov eax, [rsi+i8259x_TXDCTL]
+	bt eax, 25
+	jnc net_i8259x_init_tx_enable_wait
 
 ; DEBUG - Enable Promiscuous mode
 ;	mov eax, [rsi+i8259x_FCTRL]
@@ -199,6 +204,11 @@ net_i8259x_init_dma_wait:
 ;	; Reset the device
 ;	call net_i8259x_reset
 
+; Debug
+	mov rsi, testpacket
+	mov rcx, 42
+	call net_i8259x_transmit
+
 net_i8259x_init_error:
 
 	pop rax
@@ -208,6 +218,19 @@ net_i8259x_init_error:
 	ret
 ; -----------------------------------------------------------------------------
 
+testpacket:
+db 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF	; Dest
+db 0x98, 0xB7, 0x85, 0x1E, 0x92, 0x4E	; Source
+db 0x08, 0x06	; ARP
+db 0x00, 0x01	; Ethernet
+db 0x08, 0x00	; Proto
+db 0x06		; Hardware size
+db 0x04		; Protocol size
+db 0x00, 0x01	; Opcode
+db 0x98, 0xB7, 0x85, 0x1E, 0x92, 0x4E	; My MAC
+db 0x0A, 0x00, 0x00, 0x01	; My IP
+db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00	; Target MAC
+db 0x0A, 0x00, 0x00, 0x02	; Target IP
 
 ; -----------------------------------------------------------------------------
 ; net_i8259x_reset - Reset an Intel 8259x NIC
@@ -223,7 +246,40 @@ net_i8259x_reset:
 ;  IN:	RSI = Location of packet
 ;	RCX = Length of packet
 ; OUT:	Nothing
+; Note:	Descriptor Format:
+;	Bytes 7:0 - Buffer Address
+;	Bytes 11:8 - Command / Type / Length
+;	Bytes 16:12 - Status
 net_i8259x_transmit:
+	push rdi
+	push rax
+
+	mov rdi, os_tx_desc			; Transmit Descriptor Base Address
+
+	mov rax, rsi
+	stosq					; Store the data location
+
+	mov rax, rcx				; The packet size is in CX
+	;	IXGBE_ADVTXD_DCMD_EOP -> 0x01000000 /* End of Packet */
+	;	IXGBE_ADVTXD_DCMD_RS -> 0x08000000 /* Report Status */
+	;	IXGBE_ADVTXD_DCMD_IFCS -> 0x02000000 /* Insert FCS (Ethernet CRC) */
+	;	IXGBE_ADVTXD_DCMD_DEXT -> 0x20000000 /* Desc extension (0 = legacy) */
+	;	IXGBE_ADVTXD_DTYP_DATA 0x00300000
+	or eax, 0x2B000000
+	stosd
+
+	mov rax, rcx
+	shl eax, 14 ;IXGBE_ADVTXD_PAYLEN_SHIFT
+	stosd
+
+	mov rdi, [os_NetIOBaseMem]
+	xor eax, eax
+	mov [rdi+i8259x_TDH], eax		; TDH - Transmit Descriptor Head
+	inc eax
+	mov [rdi+i8259x_TDT], eax		; TDL - Transmit Descriptor Tail
+
+	pop rax
+	pop rdi
 	ret
 ; -----------------------------------------------------------------------------
 
