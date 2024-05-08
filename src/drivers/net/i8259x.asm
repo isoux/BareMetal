@@ -119,22 +119,18 @@ net_i8259x_init_dma_wait:
 	; These registers are cleared by the device after they are read
 	mov eax, [rsi+i8259x_GPRC]		; RX packets
 	mov eax, [rsi+i8259x_GPTC]		; TX packets
-	xor eax, eax
 	mov eax, [rsi+i8259x_GORCL]
-	mov ebx, [rsi+i8259x_GORCH]
-	shl rbx, 32
-	add rax, rbx				; RX bytes
-	xor eax, eax
+	mov eax, [rsi+i8259x_GORCH]		; RX bytes = GORCL + (GORCH << 32)
 	mov eax, [rsi+i8259x_GOTCL]
-	mov ebx, [rsi+i8259x_GOTCH]
-	shl rbx, 32
-	add rax, rbx				; TX bytes
+	mov eax, [rsi+i8259x_GOTCH]		; TX bytes = GOTCL + (GOTCH << 32)	
 
-	; Create a receive descriptor
+	; Create a single receive descriptor
 	push rdi
 	mov rdi, os_rx_desc
 	mov rax, os_PacketBuffers		; Default packet will go here
-	add rax, 2				; Room for packet length
+;	add rax, 2				; Room for packet length
+	stosq
+	xor eax, eax
 	stosq
 	pop rdi
 
@@ -266,6 +262,9 @@ net_i8259x_init_tx_enable_wait:
 	mov rcx, 42
 	call net_i8259x_transmit
 
+;	mov eax, 1
+;	mov [rsi+i8259x_RDT], eax
+
 net_i8259x_init_error:
 
 	pop rax
@@ -286,9 +285,9 @@ db 0x06					; Hardware size
 db 0x04					; Protocol size
 db 0x00, 0x01				; Opcode
 db 0x98, 0xB7, 0x85, 0x1E, 0x92, 0x4E	; My MAC
-db 0x0A, 0x00, 0x00, 0x01		; My IP
+db 0x0A, 0x00, 0x00, 0x0B		; My IP (10.0.0.11)
 db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00	; Target MAC
-db 0x0A, 0x00, 0x00, 0x02		; Target IP
+db 0x0A, 0x00, 0x00, 0x0A		; Target IP (10.0.0.10)
 
 ; -----------------------------------------------------------------------------
 ; net_i8259x_reset - Reset an Intel 8259x NIC
@@ -304,10 +303,10 @@ net_i8259x_reset:
 ;  IN:	RSI = Location of packet
 ;	RCX = Length of packet
 ; OUT:	Nothing
-; Note:	Descriptor Format - Legacy Mode:
+; Note:	Transmit Descriptor (TDESC) Layout - Legacy Mode (7.2.3.2.2):
 ;	Bits 63:0 - Buffer Address
 ;	Bits 95:64 - CMD (Bits 31:24) / CSO (Bits 23:16) / Length (Bits 15:0)
-;	Bits 128:96 - VLAN (Bits 63:48) / CSS (Bits 47:40) / Reserved (Bits 39:36) / STA (Bits 35:32)
+;	Bits 127:96 - VLAN (Bits 63:48) / CSS (Bits 47:40) / Reserved (Bits 39:36) / STA (Bits 35:32)
 net_i8259x_transmit:
 	push rdi
 	push rax
@@ -325,7 +324,7 @@ net_i8259x_transmit:
 	mov [rdi+i8259x_TDH], eax		; TDH - Transmit Descriptor Head
 	inc eax
 	mov [rdi+i8259x_TDT], eax		; TDL - Transmit Descriptor Tail
-
+	; TDESC.STA.DD (bit 32) should be 1 once the hardware has sent the packet
 	pop rax
 	pop rdi
 	ret
@@ -336,6 +335,10 @@ net_i8259x_transmit:
 ; net_i8259x_poll - Polls the Intel 8259x NIC for a received packet
 ;  IN:	RDI = Location to store packet
 ; OUT:	RCX = Length of packet
+; Note: Receive Descriptor (RDESC) Layout - Legacy Mode (7.1.5):
+;	Bits 63:0 - Buffer Address
+;	Bits 95:64 - Fragment Checksum (Bits 31:16) / Length (Bits 15:0)
+;	Bits 127:96 - VLAN (Bits 63:48) / Errors (Bits 47:40) / STA (Bits 39:32)
 net_i8259x_poll:
 	ret
 ; -----------------------------------------------------------------------------
