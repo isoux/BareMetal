@@ -192,13 +192,17 @@ net_i8259x_init_dma_wait:
 	mov eax, [rsi+i8259x_HLREG0]
 	or eax, 1 << i8259x_HLREG0_TXCRCEN | 1 << i8259x_HLREG0_TXPADEN
 	mov [rsi+i8259x_HLREG0], eax
+	; Set RTTDCS.ARBDIS to 1b
+	mov eax, [rsi+i8259x_RTTDCS]
+	bts eax, 6				; ARBDIS
+	mov [rsi+i8259x_RTTDCS], eax
 	; Set packet buffer
 	mov eax, 32768
 	mov [rsi+i8259x_TXPBSIZE], eax
 	; 
 	mov eax, 0x0000FFFF
 	mov [rsi+i8259x_DTXMXSZRQ], eax
-	; 
+	; Clear RTTDCS.ARBDIS to 0b
 	mov eax, [rsi+i8259x_RTTDCS]
 	btc eax, 6				; ARBDIS
 	mov [rsi+i8259x_RTTDCS], eax
@@ -212,15 +216,15 @@ net_i8259x_init_dma_wait:
 	xor eax, eax
 	mov [rsi+i8259x_TDH], eax
 	mov [rsi+i8259x_TDT], eax
-	; 
-	mov eax, [rsi+i8259x_DMATXCTL]
-	or eax, 1				; Transmit Enable, bit 0 TE
-	mov [rsi+i8259x_DMATXCTL], eax
-	; 
+	; Program TXDCTL with TX descriptor write back policy
 	mov eax, [rsi+i8259x_TXDCTL]
 	and eax, 0xFF808080			; Clear bits 22:16, 14:8, 6:0
 ;	or eax, 0x0040824			; Set bits 22:16, 14:8, 6:0
 	mov [rsi+i8259x_TXDCTL], eax
+	; Enable Transmit path
+	mov eax, [rsi+i8259x_DMATXCTL]
+	or eax, 1				; Transmit Enable, bit 0 TE
+	mov [rsi+i8259x_DMATXCTL], eax
 
 	; Enable the RX queue
 	mov eax, [rsi+i8259x_RXDCTL]
@@ -245,9 +249,9 @@ net_i8259x_init_tx_enable_wait:
 ;	mov [rsi+i8259x_EIMS], eax
 
 ; DEBUG - Enable Promiscuous mode
-;	mov eax, [rsi+i8259x_FCTRL]
-;	or eax, 1 << i8259x_FCTRL_MPE | 1 << i8259x_FCTRL_UPE
-;	mov [rsi+i8259x_FCTRL], eax
+	mov eax, [rsi+i8259x_FCTRL]
+	or eax, 1 << i8259x_FCTRL_MPE | 1 << i8259x_FCTRL_UPE
+	mov [rsi+i8259x_FCTRL], eax
 
 	; Set Driver Loaded bit
 	mov eax, [rsi+i8259x_CTRL_EXT]
