@@ -122,7 +122,7 @@ net_i8259x_init_dma_wait:
 	mov eax, [rsi+i8259x_GORCL]
 	mov eax, [rsi+i8259x_GORCH]		; RX bytes = GORCL + (GORCH << 32)
 	mov eax, [rsi+i8259x_GOTCL]
-	mov eax, [rsi+i8259x_GOTCH]		; TX bytes = GOTCL + (GOTCH << 32)	
+	mov eax, [rsi+i8259x_GOTCH]		; TX bytes = GOTCL + (GOTCH << 32)
 
 	; Create a single receive descriptor
 	push rdi
@@ -141,6 +141,14 @@ net_i8259x_init_dma_wait:
 	; Set packet buffer
 	mov eax, 32768
 	mov [rsi+i8259x_RXPBSIZE], eax
+	; Set Max packet size
+	mov eax, 9000				; 9000 bytes
+	shl eax, 16				; Shift to bits 31:16
+	mov [rsi+i8259x_MAXFRS], eax
+	; Enable Jumbo Frames
+	mov eax, [rsi+i8259x_HLREG0]
+	or eax, 1 << i8259x_HLREG0_JUMBOEN
+	mov [rsi+i8259x_HLREG0], eax
 	; Enable CRC offloading
 	mov eax, [rsi+i8259x_HLREG0]
 	or eax, 1 << i8259x_HLREG0_RXCRCSTRP
@@ -171,36 +179,57 @@ net_i8259x_init_dma_wait:
 	; Enable Multicast
 	mov eax, 0xFFFFFFFF
 	mov [rsi+i8259x_MTA], eax
-	; Set bit 16 of CTRL_EXT
-	mov eax, [rsi+i8259x_CTRL_EXT]
-	bts eax, 16
-	mov [rsi+i8259x_CTRL_EXT], eax
-	; Clear bit 12 of DCA_RXCTRL
-	mov eax, [rsi+i8259x_DCA_RXCTRL]
-	btc eax, 12
-	mov [rsi+i8259x_DCA_RXCTRL], eax
+	; Enable the RX queue
+	mov eax, [rsi+i8259x_RXDCTL]
+	or eax, 0x02000000
+	mov [rsi+i8259x_RXDCTL], eax
+net_i8259x_init_rx_enable_wait:
+	mov eax, [rsi+i8259x_RXDCTL]
+	bt eax, 25
+	jnc net_i8259x_init_rx_enable_wait
+	; Set SECRXCTRL_RX_DIS
+	mov eax, [rsi+i8259x_SECRXCTRL]
+	bts eax, i8259x_SECRXCTRL_RX_DIS
+	mov [rsi+i8259x_SECRXCTRL], eax
+	; Poll SECRXSTAT_SECRX_RDY
+net_i8259x_init_rx_secrx_rdy_wait:
+	mov eax, [rsi+i8259x_SECRXSTAT]
+	bt eax, i8259x_SECRXSTAT_SECRX_RDY
+	jnc net_i8259x_init_rx_secrx_rdy_wait
 	; Enable RX
 	mov eax, 1				; RXEN = 1
 	mov [rsi+i8259x_RXCTRL], eax		; Enable receive
+	; Clear SECRXCTRL.SECRX_DIS
+	mov eax, [rsi+i8259x_SECRXCTRL]
+	btc eax, i8259x_SECRXCTRL_SECRX_DIS
+	mov [rsi+i8259x_SECRXCTRL], eax
+	; Set bit 16 of CTRL_EXT (Last line in 4.6.7)
+	mov eax, [rsi+i8259x_CTRL_EXT]
+	bts eax, 16
+	mov [rsi+i8259x_CTRL_EXT], eax
+	; Clear bit 12 of DCA_RXCTRL (Last line in 4.6.7)
+	mov eax, [rsi+i8259x_DCA_RXCTRL]
+	btc eax, 12
+	mov [rsi+i8259x_DCA_RXCTRL], eax
 
 	; Initialize transmit (4.6.8)
 	; Enable CRC offload and small packet padding
 	mov eax, [rsi+i8259x_HLREG0]
 	or eax, 1 << i8259x_HLREG0_TXCRCEN | 1 << i8259x_HLREG0_TXPADEN
 	mov [rsi+i8259x_HLREG0], eax
-	; Set RTTDCS.ARBDIS to 1b
+	; Set RTTDCS_ARBDIS
 	mov eax, [rsi+i8259x_RTTDCS]
-	bts eax, 6				; ARBDIS
+	bts eax, i8259x_RTTDCS_ARBDIS
 	mov [rsi+i8259x_RTTDCS], eax
-	; Set packet buffer
+	; Configure Max allowed number of bytes requests (Bits 11:0)
+	mov eax, 0x00000FFF
+	mov [rsi+i8259x_DTXMXSZRQ], eax
+	; Set packet buffer size
 	mov eax, 32768
 	mov [rsi+i8259x_TXPBSIZE], eax
-	; 
-	mov eax, 0x0000FFFF
-	mov [rsi+i8259x_DTXMXSZRQ], eax
-	; Clear RTTDCS.ARBDIS to 0b
+	; Clear RTTDCS_ARBDIS
 	mov eax, [rsi+i8259x_RTTDCS]
-	btc eax, 6				; ARBDIS
+	btc eax, i8259x_RTTDCS_ARBDIS
 	mov [rsi+i8259x_RTTDCS], eax
 	; Set up TX descriptor ring 0
 	mov rax, os_tx_desc
@@ -221,19 +250,9 @@ net_i8259x_init_dma_wait:
 	mov eax, [rsi+i8259x_DMATXCTL]
 	or eax, 1				; Transmit Enable, bit 0 TE
 	mov [rsi+i8259x_DMATXCTL], eax
-
-	; Enable the RX queue
-	mov eax, [rsi+i8259x_RXDCTL]
-	or eax, 0x02000000
-	mov [rsi+i8259x_RXDCTL], eax
-net_i8259x_init_rx_enable_wait:
-	mov eax, [rsi+i8259x_RXDCTL]
-	bt eax, 25
-	jnc net_i8259x_init_rx_enable_wait
-	
 	; Enable the TX queue
 	mov eax, [rsi+i8259x_TXDCTL]
-	or eax, 0x02000000
+	bts eax, 25
 	mov [rsi+i8259x_TXDCTL], eax
 net_i8259x_init_tx_enable_wait:
 	mov eax, [rsi+i8259x_TXDCTL]
@@ -262,8 +281,8 @@ net_i8259x_init_tx_enable_wait:
 	mov rcx, 42
 	call net_i8259x_transmit
 
-;	mov eax, 1
-;	mov [rsi+i8259x_RDT], eax
+	mov eax, 1
+	mov [rsi+i8259x_RDT], eax
 
 net_i8259x_init_error:
 
@@ -276,14 +295,14 @@ net_i8259x_init_error:
 
 align 16
 testpacket:
-db 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF	; Dest
+db 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF	; Destination (Broadcast)
 db 0x98, 0xB7, 0x85, 0x1E, 0x92, 0x4E	; Source
 db 0x08, 0x06				; ARP
 db 0x00, 0x01				; Ethernet
-db 0x08, 0x00				; Proto
+db 0x08, 0x00				; Proto (IPv4)
 db 0x06					; Hardware size
 db 0x04					; Protocol size
-db 0x00, 0x01				; Opcode
+db 0x00, 0x01				; Opcode (Request)
 db 0x98, 0xB7, 0x85, 0x1E, 0x92, 0x4E	; My MAC
 db 0x0A, 0x00, 0x00, 0x0B		; My IP (10.0.0.11)
 db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00	; Target MAC
@@ -442,6 +461,8 @@ i8259x_RTTDCS		equ 0x04900 ; DCB Transmit Descriptor Plane Control and Status
 i8259x_DCA_RXCTRL	equ 0x0100C ; Rx DCA Control Register
 
 ; Security Registers
+i8259x_SECRXCTRL	equ 0x08D00 ; Security Rx Control
+i8259x_SECRXSTAT	equ 0x08D04 ; Security Rx Status
 
 ; LinkSec Registers
 
@@ -460,6 +481,7 @@ i8259x_DCA_RXCTRL	equ 0x0100C ; Rx DCA Control Register
 ; MAC Registers
 i8259x_HLREG0		equ 0x04240 ; MAC Core Control 0 Register
 i8259x_HLREG1		equ 0x04244 ; MAC Core Status 1 Register
+i8259x_MAXFRS		equ 0x04268 ; Max Frame Size
 i8259x_AUTOC		equ 0x042A0 ; Auto-Negotiation Control Register
 i8259x_AUTOC2		equ 0x042A8 ; Auto-Negotiation Control Register 2
 i8259x_LINKS		equ 0x042A4 ; Link Status Register
@@ -498,16 +520,19 @@ i8259x_STATUS_LINKUP	equ 7 ; Linkup Status Indication
 i8259x_STATUS_MASEN	equ 19 ; This is a status bit of the appropriate CTRL.PCIe Master Disable bit.
 ; All other bits are reserved and should be written as 0
 
-; CTRL_EXT (Extended Device Control Register, 0x00018, RW)
+; CTRL_EXT (Extended Device Control Register, 0x00018, RW) Bit Masks
 i8259x_CTRL_EXT_DRV_LOAD	equ 28 ; Driver loaded and the corresponding network interface is enabled
 
-; RDRXCTL (Receive DMA Control Register, 0x02F00, RW)
+; RDRXCTL (Receive DMA Control Register, 0x02F00, RW) Bit Masks
 i8259x_RDRXCTL_CRCSTRIP	equ 0 ; Rx CRC Strip indication to the Rx DMA unit. Must be same as HLREG0.RXCRCSTRP
 i8259x_RDRXCTL_DMAIDONE	equ 3 ; DMA Init Done - 1 when DMA init is done
 
 ; RXCTRL (Receive Control Register, 0x03000, RW) Bit Masks
 i8259x_RXCTRL_RXEN	equ 0 ; Receive Enable
 ; All other bits are reserved and should be written as 0
+
+; RTTDCS (DCB Transmit Descriptor Plane Control and Status, 0x04900, RW) Bit Masks
+i8259x_RTTDCS_ARBDIS	equ 6 ; DCB Arbiters Disable
 
 ; HLREG0 (MAC Core Control 0 Register, 0x04240, RW) Bit Masks
 i8259x_HLREG0_TXCRCEN	equ 0 ; Tx CRC Enable - 1 by default
@@ -526,6 +551,13 @@ i8259x_FCTRL_SBP	equ 1 ; Store Bad Packets
 i8259x_FCTRL_MPE	equ 8 ; Multicast Promiscuous Enable
 i8259x_FCTRL_UPE	equ 9 ; Unicast Promiscuous Enable
 i8259x_FCTRL_BAM	equ 10 ; Broadcast Accept Mode
+
+; SECRXCTRL (Security Rx Control, 0x08D00, RW)
+i8259x_SECRXCTRL_SECRX_DIS	equ 0 ; Rx Security Offload Disable Bit.
+i8259x_SECRXCTRL_RX_DIS		equ 1 ; Disable Sec Rx Path
+
+; SECRXSTAT (Security Rx Status, 0x08D04, RO)
+i8259x_SECRXSTAT_SECRX_RDY	equ 0 ; Rx security block ready for mode change.
 
 ; TODO Change bit masks to actual bits
 ; EEC Bit Masks
