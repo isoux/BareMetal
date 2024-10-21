@@ -17,67 +17,12 @@ b_system:
 	cmp rcx, 0xFF
 	jg b_system_end
 
-; Basic
-	cmp cl, 0x00
-	je b_system_timecounter
-
-; CPU
-	cmp cl, 0x10
-	je b_system_smp_get_id
-	cmp cl, 0x11
-	je b_system_smp_numcores
-	cmp cl, 0x12
-	je b_system_smp_set
-	cmp cl, 0x13
-	je b_system_smp_get
-	cmp cl, 0x14
-	je b_system_smp_lock
-	cmp cl, 0x15
-	je b_system_smp_unlock
-	cmp cl, 0x16
-	je b_system_smp_busy
-
-; Video
-	cmp cl, 0x20
-	je b_system_screen_lfb_get
-	cmp cl, 0x21
-	je b_system_screen_x_get
-	cmp cl, 0x22
-	je b_system_screen_y_get
-	cmp cl, 0x23
-	je b_system_screen_ppsl_get
-	cmp cl, 0x24
-	je b_system_screen_bpp_get
-
-; Network
-	cmp cl, 0x30
-	je b_system_mac_get
-
-; PCI
-	cmp cl, 0x40
-	je b_system_pci_read
-	cmp cl, 0x41
-	je b_system_pci_write
-
-; Standard Output
-	cmp cl, 0x42
-	je b_system_stdout_set
-	cmp cl, 0x43
-	je b_system_stdout_get
-
-; Misc
-	cmp cl, 0x80
-	je b_system_debug_dump_mem
-	cmp cl, 0x81
-	je b_system_debug_dump_rax
-	cmp cl, 0x82
-	je b_system_delay
-	cmp cl, 0x8D
-	je b_system_reset
-	cmp cl, 0x8E
-	je b_system_reboot
-	cmp cl, 0x8F
-	je b_system_shutdown
+; Instead of comparing the cl register, use it as an index
+; for equally quick and equal access to all opted functions
+; To save memory, the functions are placed in 16-bit frames
+	lea ecx, [index_func_table+ecx*2]	; extract function from table by index
+	mov cx, [ecx]	; limit jump to 16-bit (we are at 64-bit environment)
+	jmp rcx		; jump to opted function
 
 ; End of options
 b_system_end:
@@ -360,7 +305,48 @@ os_virt_to_phys_done:
 ; os_stub -- A function that just returns
 b_user:
 os_stub:
+none:
 	ret
+; -----------------------------------------------------------------------------
+
+
+; -----------------------------------------------------------------------------
+; System functions indexed options
+; Table for jumps to indexed functions
+index_func_table:
+; -----------------------------------------------------------------------------
+; Basic
+	dw b_system_timecounter, none,none,none,none,none,none,none,none,none
+	dw none,none,none,none,none,none
+; CPU
+	dw b_system_smp_get_id, b_system_smp_numcores, b_system_smp_set
+	dw b_system_smp_get, b_system_smp_lock, b_system_smp_unlock
+	dw b_system_smp_busy, none,none,none,none,none,none,none,none,none
+
+; Video
+	dw b_system_screen_lfb_get, b_system_screen_x_get, b_system_screen_y_get
+	dw b_system_screen_ppsl_get, b_system_screen_bpp_get
+	dw none,none,none,none,none,none,none,none,none,none,none
+
+; Network
+	dw b_system_mac_get ,none,none
+	dw none,none,none,none,none,none,none,none,none,none,none,none,none
+
+; PCI
+	dw b_system_pci_read, b_system_pci_write
+
+; Standard Output
+	dw b_system_stdout_set, b_system_stdout_get
+	dw none,none,none,none,none,none,none,none,none,none,none,none
+	dw none,none,none,none,none,none,none,none,none,none,none,none
+	dw none,none,none,none,none,none,none,none,none,none,none,none
+	dw none,none,none,none,none,none,none,none,none,none,none,none
+	dw none,none,none,none,none,none,none,none,none,none,none,none
+
+; Misc
+	dw b_system_debug_dump_mem, b_system_debug_dump_rax, b_system_delay
+	dw none,none,none,none,none,none,none,none,none,none
+	dw b_system_reset, b_system_reboot, b_system_shutdown
 ; -----------------------------------------------------------------------------
 
 
